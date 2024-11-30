@@ -6,9 +6,11 @@ import json
 import tempfile
 from rich.console import Console
 from rich.progress import track
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 ## Constants
 DATASET_PREDICTION_SAVE_PATH = 'results/predictions'
+MAX_WORKERS = 3
 
 # Initialize rich console
 console = Console()
@@ -104,6 +106,30 @@ class CUADExecutor:
             os.unlink(questions_file)
             
         return formatted_predictions
+
+    def _process_condition_file(self, args):
+        """Helper function for parallel condition processing"""
+        filename, file_data, condition, agent, debug, verbose = args
+        if condition not in file_data:
+            return filename, None
+            
+        document_path = file_data['document_path']
+        question = file_data[condition]['question']
+        true_answer = file_data[condition]['answer']
+        
+        prediction = agent.answer_contract_question(
+            contract_path=document_path,
+            question=question,
+            debug=debug,
+            verbose=verbose
+        )
+        
+        return filename, {
+            'question': question,
+            'predicted_answer': prediction['answer'],
+            'true_value': true_answer,
+            'raw_response': prediction['raw_response']
+        }
     
     def process_condition(self, 
                           condition: str, 
@@ -123,30 +149,20 @@ class CUADExecutor:
         """
         console.print(f"[bold green]Processing condition: {condition}[/bold green]")
         predictions = {}
+
+        # Create arguments for parallel processing
+        process_args = [
+            (filename, file_data, condition, agent, debug, verbose)
+            for filename, file_data in self.cuad_data.items()
+        ]
         
-        for filename, file_data in track(self.cuad_data.items(), description="Processing files"):
-            if condition not in file_data:
-                continue
-                
-            document_path = file_data['document_path']
-            question = file_data[condition]['question']
-            true_answer = file_data[condition]['answer']
+        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = [executor.submit(self._process_condition_file, args) for args in process_args]
             
-            # Get prediction using answer_contract_question
-            prediction = agent.answer_contract_question(
-                contract_path=document_path,
-                question=question,
-                debug=debug,
-                verbose=verbose
-            )
-            
-            # Format prediction
-            predictions[filename] = {
-                'question': question,
-                'predicted_answer': prediction['answer'],
-                'true_value': true_answer,
-                'raw_response': prediction['raw_response']
-            }
+            for future in track(as_completed(futures), total=len(futures), description="Processing files"):
+                filename, result = future.result()
+                if result is not None:
+                    predictions[filename] = result
                     
         return predictions
     
@@ -167,8 +183,18 @@ class CUADExecutor:
         console.print("[bold blue]Starting dataset processing[/bold blue]")
         predictions = {}
         
-        for filename in track(self.cuad_data.keys(), description="Processing files"):
-            predictions[filename] = self.process_file(filename, agent, debug=debug, verbose=verbose)
+        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {
+                executor.submit(self.process_file, filename, agent, debug, verbose): filename 
+                for filename in self.cuad_data.keys()
+            }
+            
+            for future in track(as_completed(futures), total=len(futures), description="Processing files"):
+                filename = futures[future]
+                try:
+                    predictions[filename] = future.result()
+                except Exception as e:
+                    console.print(f"[bold red]Error processing {filename}: {str(e)}[/bold red]")
         
         # Save predictions
         save_path = os.path.join(self.dataset_save_path, f'{agent.model_name}_baseline.json')

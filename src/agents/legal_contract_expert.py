@@ -5,7 +5,6 @@ from openai import BaseModel, OpenAI
 import os
 from dotenv import load_dotenv
 import tiktoken
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import json
 import sys
 import re
@@ -26,7 +25,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 ## Constants
 
-MAX_WORKERS = 5  # Number of parallel processes for processing questions
 MAX_EXPERT_RETRIES = 3  # Maximum number of retries for expert agent
 
 OLLAMA_CLIENT = OpenAI(
