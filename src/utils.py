@@ -139,3 +139,109 @@ def plot_category_distributions(analysis: Dict[str, Any], save_path: str = None)
         plt.savefig(save_path)
     else:
         plt.show()
+
+def sort_eval_results(eval_data: dict, doc_stats: dict) -> list:
+    """
+    Sort evaluation results based on F1 score, precision, recall, and accuracy.
+    Weighted score calculation:
+    - F1 score: 50%
+    - Precision: 17.5%
+    - Recall: 17.5%
+    - Accuracy: 15%
+    
+    Args:
+        eval_data (dict): Evaluation results from llama2:13b_baseline.json
+        doc_stats (dict): Document statistics from txt_doc_stats.json
+        
+    Returns:
+        list: List of tuples containing (filename, metrics) sorted by performance
+    """
+    # Extract file-level metrics
+    file_metrics = eval_data['llama2:13b']['file_level_metrics']
+    
+    # Create list of tuples with filename and metrics
+    results = []
+    for filename, metrics in file_metrics.items():
+        # Calculate weighted score
+        weighted_score = (
+            0.50 * metrics['f1_score'] +      # F1 score: 50%
+            0.175 * metrics['precision'] +     # Precision: 17.5%
+            0.175 * metrics['recall'] +        # Recall: 17.5%
+            0.15 * metrics['accuracy']         # Accuracy: 15%
+        )
+        
+        results.append((
+            filename,
+            {
+                'weighted_score': weighted_score,
+                'f1_score': metrics['f1_score'],
+                'precision': metrics['precision'],
+                'recall': metrics['recall'],
+                'accuracy': metrics['accuracy'],
+                'token_length': doc_stats.get(filename, {}).get('token_length', 0)
+            }
+        ))
+    
+    # Sort by weighted score (lowest first)
+    return sorted(results, key=lambda x: x[1]['weighted_score'])
+
+def get_worst_performing_files(sorted_results: list, n: int = 20, max_tokens: int = None) -> list:
+    """
+    Get the n worst performing files, optionally filtering by token count.
+    
+    Args:
+        sorted_results (list): Sorted results from sort_eval_results()
+        n (int): Number of files to return
+        max_tokens (int, optional): Maximum token length filter
+        
+    Returns:
+        list: List of n worst performing filenames
+    """
+    if max_tokens is None:
+        return [filename for filename, _ in sorted_results[:n]]
+    
+    # Filter by token count and return worst n
+    filtered_results = [
+        (filename, metrics) 
+        for filename, metrics in sorted_results
+        if metrics['token_length'] <= max_tokens
+    ]
+    return [filename for filename, _ in filtered_results[:n]]
+
+def save_file_subsets(worst_overall: list, worst_filtered: list, save_path: str, token_cutoff: int) -> None:
+    """
+    Save the two sets of worst performing files to a JSON file.
+    
+    Args:
+        worst_overall (list): List of worst performing files overall
+        worst_filtered (list): List of worst performing files under token limit
+        save_path (str): Path to save the JSON file
+    """
+    subsets = {
+        'worst_performing_overall': worst_overall,
+        f'worst_performing_under_{str(token_cutoff)}_tokens': worst_filtered
+    }
+    save_json(subsets, save_path)
+
+def analyze_subset_metrics(eval_data: dict, file_subset: list) -> dict:
+    """
+    Calculate average metrics for a subset of files.
+    
+    Args:
+        eval_data (dict): Evaluation results from llama2:13b_baseline.json
+        file_subset (list): List of filenames to analyze
+        
+    Returns:
+        dict: Average metrics for the subset
+    """
+    metrics = eval_data['llama2:13b']['file_level_metrics']
+    subset_metrics = [metrics[filename] for filename in file_subset]
+    
+    avg_metrics = {
+        'avg_f1_score': sum(m['f1_score'] for m in subset_metrics) / len(subset_metrics),
+        'avg_precision': sum(m['precision'] for m in subset_metrics) / len(subset_metrics),
+        'avg_recall': sum(m['recall'] for m in subset_metrics) / len(subset_metrics),
+        'avg_accuracy': sum(m['accuracy'] for m in subset_metrics) / len(subset_metrics),
+    }
+    
+    return avg_metrics

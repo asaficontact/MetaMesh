@@ -74,3 +74,7 @@ metamesh/
 - Structured information extraction methods
 - Prompt engineering optimization
 - Cross-model performance analysis
+
+
+## Challenge 
+- The llama2:13 has a context window of 4096 and some of the tokens are beyond the context window. We need to find a way to handle this.
