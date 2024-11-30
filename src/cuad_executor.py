@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import track
 
 ## Constants
-DATASET_PREDICTION_SAVE_PATH = '/results/predictions'
+DATASET_PREDICTION_SAVE_PATH = 'results/predictions'
 
 # Initialize rich console
 console = Console()

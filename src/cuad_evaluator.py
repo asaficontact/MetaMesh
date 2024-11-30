@@ -10,7 +10,7 @@ from src.utils import save_json
 ## Constants
 OPENAI_MODELS_LIST = ["gpt-4o-mini", "gpt-4o"]
 OLLAMA_MODELS_LIST = ["phi3", "mistral", "llama2:13b"]
-EVALUATION_SAVE_PATH = '/results/evals'
+EVALUATION_SAVE_PATH = 'results/evals'
 
 class CUADEvaluator:
     """
