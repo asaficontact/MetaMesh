@@ -53,7 +53,10 @@ class CUADExecutor:
         
         return temp_file.name
         
-    def process_file(self, filename: str, agent: LegalContractExpert, debug: bool = False) -> Dict[str, Any]:
+    def process_file(self, filename: str, 
+                     agent: LegalContractExpert, 
+                     debug: bool = False,
+                     verbose: bool = False) -> Dict[str, Any]:
         """
         Process all category questions for a given file
         
@@ -61,7 +64,7 @@ class CUADExecutor:
             filename (str): Name of file to process
             agent (LegalContractExpert): LLM agent to use for predictions
             debug (bool): Whether to enable debug mode
-            
+            verbose (bool): Whether to enable verbose mode
         Returns:
             dict: Predictions for each category question
         """
@@ -79,7 +82,8 @@ class CUADExecutor:
             predictions = agent.answer_questions_list(
                 contract_path=document_path,
                 category_to_question_path=questions_file,
-                debug=debug
+                debug=debug,
+                verbose=verbose
             )
             
             # Format predictions to include true values
@@ -149,14 +153,14 @@ class CUADExecutor:
                 
         return predictions
     
-    def process_dataset(self, agent: LegalContractExpert, debug: bool = False) -> Dict[str, Any]:
+    def process_dataset(self, agent: LegalContractExpert, debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """
         Process entire CUAD dataset
         
         Args:
             agent (LegalContractExpert): LLM agent to use for predictions
             debug (bool): Whether to enable debug mode
-            
+            verbose (bool): Whether to enable verbose mode
         Returns:
             dict: Predictions for all files and conditions
         """
@@ -164,7 +168,7 @@ class CUADExecutor:
         predictions = {}
         
         for filename in track(self.cuad_data.keys(), description="Processing files"):
-            predictions[filename] = self.process_file(filename, agent, debug=debug)
+            predictions[filename] = self.process_file(filename, agent, debug=debug, verbose=verbose)
         
         # Save predictions
         save_path = os.path.join(self.dataset_save_path, f'{agent.model_name}_baseline.json')
