@@ -17,7 +17,9 @@ class CUADExecutor:
     """
     Executor class to evaluate LegalContractExpert against CUAD dataset
     """
-    def __init__(self, cuad_data_path: str, dataset_save_path: str = DATASET_PREDICTION_SAVE_PATH):
+    def __init__(self, 
+                 cuad_data_path: str, 
+                 dataset_save_path: str = DATASET_PREDICTION_SAVE_PATH):
         """
         Initialize with path to CUAD dataset
         
@@ -53,7 +55,8 @@ class CUADExecutor:
         
         return temp_file.name
         
-    def process_file(self, filename: str, 
+    def process_file(self, 
+                     filename: str, 
                      agent: LegalContractExpert, 
                      debug: bool = False,
                      verbose: bool = False) -> Dict[str, Any]:
@@ -102,7 +105,11 @@ class CUADExecutor:
             
         return formatted_predictions
     
-    def process_condition(self, condition: str, agent: LegalContractExpert, debug: bool = False) -> Dict[str, Any]: #TODO: The answer_questions_list function will not work here as the questions list must be for the same contract file and not across. 
+    def process_condition(self, 
+                          condition: str, 
+                          agent: LegalContractExpert, 
+                          debug: bool = False, 
+                          verbose: bool = False) -> Dict[str, Any]:
         """
         Process a specific condition across all files
         
@@ -122,38 +129,31 @@ class CUADExecutor:
                 continue
                 
             document_path = file_data['document_path']
+            question = file_data[condition]['question']
+            true_answer = file_data[condition]['answer']
             
-            # Create category to question mapping for single condition
-            category_to_question = {condition: file_data[condition]['question']}
+            # Get prediction using answer_contract_question
+            prediction = agent.answer_contract_question(
+                contract_path=document_path,
+                question=question,
+                debug=debug,
+                verbose=verbose
+            )
             
-            # Create temporary questions file
-            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
-            json.dump(category_to_question, temp_file)
-            temp_file.close()
-            
-            try:
-                # Get predictions
-                pred = agent.answer_questions_list(
-                    contract_path=document_path,
-                    category_to_question_path=temp_file.name,
-                    debug=debug
-                )
-                
-                # Format prediction
-                predictions[filename] = {
-                    'question': file_data[condition]['question'],
-                    'predicted_answer': pred[condition]['answer'],
-                    'true_value': file_data[condition]['answer'],
-                    'raw_response': pred[condition]['raw_response']
-                }
-                
-            finally:
-                # Clean up temporary file
-                os.unlink(temp_file.name)
-                
+            # Format prediction
+            predictions[filename] = {
+                'question': question,
+                'predicted_answer': prediction['answer'],
+                'true_value': true_answer,
+                'raw_response': prediction['raw_response']
+            }
+                    
         return predictions
     
-    def process_dataset(self, agent: LegalContractExpert, debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
+    def process_dataset(self, 
+                        agent: LegalContractExpert, 
+                        debug: bool = False, 
+                        verbose: bool = False) -> Dict[str, Any]:
         """
         Process entire CUAD dataset
         
