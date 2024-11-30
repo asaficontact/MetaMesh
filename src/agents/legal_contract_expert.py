@@ -256,6 +256,7 @@ class LegalContractExpert:
     def answer_questions_list(self, contract_path: str, category_to_question_path: str, debug: bool = False, verbose: int = 0):
         """
         Answer questions about the contract based on categories defined in a JSON file
+        This function initializes a single instance of LegalContractExpert agent for given contract and uses it to answer questions.
         """
         self.verbose = verbose
         self._log("Starting contract analysis for multiple questions")
