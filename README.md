@@ -3,6 +3,7 @@ Meta-Prompting using Dynamic MultiAgent Collaboration for Legal Contract Analysi
 
 
 ## Project Structure
+```txt
 metamesh/
 ├── src/                  # Core project source code
 │   ├── agents/          # Agent implementations for legal contract analysis
@@ -18,6 +19,7 @@ metamesh/
 ├── .env                 # Environment variables and API keys
 ├── .gitignore          # Git ignore patterns for data, env files etc
 └── README.md           # Project documentation
+```
 
 **NOTE:** I couldn't include the data and result files in the repo due to size contraints, but feel free to reach out to me to get them.
 
