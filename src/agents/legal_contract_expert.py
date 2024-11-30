@@ -62,7 +62,10 @@ class LegalContractExpert:
             raise ValueError("Model name must be provided")
         
         self.model_name = model_name
+        self.provider = provider
         self.verbose = 0
+        if provider == 'openai':
+            self.encoding = tiktoken.encoding_for_model(model_name)
     
     def _log(self, message: str):
         """Helper method to handle logging with rich output"""
@@ -246,9 +249,17 @@ class LegalContractExpert:
         if not answer:
             answer = "N/A"
         
+        token_count = {}
+        if self.provider == 'openai':
+            token_count = {
+                "input_tokens": len(self.encoding.encode(question)),
+                "output_tokens": len(self.encoding.encode(expert_response))
+            }
+        
         return category, {
             "answer": answer,
-            "raw_response": expert_response
+            "raw_response": expert_response,
+            "token_count": token_count
         }
 
     def answer_questions_list(self, contract_path: str, category_to_question_path: str, debug: bool = False, verbose: int = 0):
@@ -284,6 +295,8 @@ class LegalContractExpert:
         )
 
         results = {}
+        total_input_tokens = 0
+        total_output_tokens = 0
         # Process categories sequentially with rich output
         for category, question in category_to_question.items():
             try:
@@ -294,10 +307,22 @@ class LegalContractExpert:
                     debug=debug
                 )
                 results[category] = result
+                if self.provider == 'openai':
+                    total_input_tokens += result['token_count']['input_tokens']
+                    total_output_tokens += result['token_count']['output_tokens']
             except Exception as e:
                 self._log(f"Error processing category: {str(e)}")
 
         self._log("Completed processing all categories")
+        
+        if self.provider == 'openai':
+            num_questions = len(category_to_question)
+            results['token_count'] = {
+                "average_input_tokens": total_input_tokens / num_questions,
+                "average_output_tokens": total_output_tokens / num_questions
+            }
+        else:
+            results['token_count'] = {}
             
         return results
 
@@ -329,8 +354,16 @@ class LegalContractExpert:
             answer = "N/A"
 
         self._log("Completed contract analysis")
+        
+        token_count = {}
+        if self.provider == 'openai':
+            token_count = {
+                "input_tokens": len(self.encoding.encode(question)),
+                "output_tokens": len(self.encoding.encode(expert_response))
+            }
             
         return {
             "answer": answer,
-            "raw_response": expert_response
+            "raw_response": expert_response,
+            "token_count": token_count
         }
