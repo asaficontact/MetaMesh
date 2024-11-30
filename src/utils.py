@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import defaultdict
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Union
 
 def load_json(file_path: str) -> dict:
     """
@@ -223,25 +223,121 @@ def save_file_subsets(worst_overall: list, worst_filtered: list, save_path: str,
     }
     save_json(subsets, save_path)
 
-def analyze_subset_metrics(eval_data: dict, file_subset: list) -> dict:
+def analyze_subset_metrics(eval_data: dict, file_subset: Union[list, dict], print_results: bool = True) -> dict:
     """
     Calculate average metrics for a subset of files.
     
     Args:
         eval_data (dict): Evaluation results from llama2:13b_baseline.json
-        file_subset (list): List of filenames to analyze
+        file_subset (Union[list, dict]): List of filenames or dictionary containing performance categories
+        print_results (bool): Whether to print the analysis results
         
     Returns:
-        dict: Average metrics for the subset
+        dict: Average metrics for each subset
     """
     metrics = eval_data['llama2:13b']['file_level_metrics']
-    subset_metrics = [metrics[filename] for filename in file_subset]
     
-    avg_metrics = {
-        'avg_f1_score': sum(m['f1_score'] for m in subset_metrics) / len(subset_metrics),
-        'avg_precision': sum(m['precision'] for m in subset_metrics) / len(subset_metrics),
-        'avg_recall': sum(m['recall'] for m in subset_metrics) / len(subset_metrics),
-        'avg_accuracy': sum(m['accuracy'] for m in subset_metrics) / len(subset_metrics),
+    def calculate_avg_metrics(files: list) -> dict:
+        subset_metrics = [metrics[filename] for filename in files]
+        return {
+            'avg_f1_score': sum(m['f1_score'] for m in subset_metrics) / len(subset_metrics),
+            'avg_precision': sum(m['precision'] for m in subset_metrics) / len(subset_metrics),
+            'avg_recall': sum(m['recall'] for m in subset_metrics) / len(subset_metrics),
+            'avg_accuracy': sum(m['accuracy'] for m in subset_metrics) / len(subset_metrics),
+            'num_files': len(subset_metrics)
+        }
+    
+    # Handle both list and dict inputs
+    if isinstance(file_subset, list):
+        results = {'overall': calculate_avg_metrics(file_subset)}
+        if print_results:
+            print("\nMetrics for file subset:")
+            print(f"Number of files: {results['overall']['num_files']}")
+            print(f"Average F1 Score: {results['overall']['avg_f1_score']:.4f}")
+            print(f"Average Precision: {results['overall']['avg_precision']:.4f}")
+            print(f"Average Recall: {results['overall']['avg_recall']:.4f}")
+            print(f"Average Accuracy: {results['overall']['avg_accuracy']:.4f}")
+    else:
+        results = {}
+        for category, files in file_subset.items():
+            results[category] = calculate_avg_metrics(files)
+            
+            if print_results:
+                print(f"\nMetrics for {category}:")
+                print(f"Number of files: {results[category]['num_files']}")
+                print(f"Average F1 Score: {results[category]['avg_f1_score']:.4f}")
+                print(f"Average Precision: {results[category]['avg_precision']:.4f}")
+                print(f"Average Recall: {results[category]['avg_recall']:.4f}")
+                print(f"Average Accuracy: {results[category]['avg_accuracy']:.4f}")
+    
+    return results
+
+def get_performance_file_sets(sorted_results: list, 
+                            n_worst: int = 20, 
+                            n_avg: int = 20, 
+                            n_75th: int = 20, 
+                            max_tokens: int = None) -> dict:
+    """
+    Get sets of files based on different performance levels:
+    - Worst performing files
+    - Files with average performance
+    - Files performing at 75th percentile
+    
+    Args:
+        sorted_results (list): Sorted results from sort_eval_results()
+        n_worst (int): Number of worst performing files to return
+        n_avg (int): Number of average performing files to return
+        n_75th (int): Number of 75th percentile performing files to return
+        max_tokens (int, optional): Maximum token length filter
+        
+    Returns:
+        dict: Dictionary containing lists of filenames for each performance category
+    """
+    # Filter by token count if specified
+    if max_tokens is not None:
+        results = [
+            (filename, metrics) 
+            for filename, metrics in sorted_results
+            if metrics['token_length'] <= max_tokens
+        ]
+    else:
+        results = sorted_results
+        
+    total_files = len(results)
+    
+    # Get worst performing files (from start of sorted list)
+    worst_performing = [filename for filename, _ in results[:n_worst]]
+    
+    # Get average performing files (from middle of sorted list)
+    mid_point = total_files // 2
+    start_avg = mid_point - (n_avg // 2)
+    end_avg = start_avg + n_avg
+    average_performing = [filename for filename, _ in results[start_avg:end_avg]]
+    
+    # Get 75th percentile performing files
+    percentile_75_idx = int(total_files * 0.75)
+    start_75th = percentile_75_idx - (n_75th // 2)
+    end_75th = start_75th + n_75th
+    percentile_75_performing = [filename for filename, _ in results[start_75th:end_75th]]
+    
+    return {
+        'worst_performance': worst_performing,
+        'average_performance': average_performing,
+        '75th_percentile_performance': percentile_75_performing
     }
+
+def save_file_subsets(worst_overall: dict, worst_filtered: dict, save_path: str, token_cutoff: int) -> None:
+    """
+    Save the two sets of performance-based file groups to a JSON file.
     
-    return avg_metrics
+    Args:
+        worst_overall (dict): Dict containing lists of files at different performance levels
+        worst_filtered (dict): Dict containing token-limited lists of files at different performance levels
+        save_path (str): Path to save the JSON file
+        token_cutoff (int): Token count cutoff used for filtering
+    """
+    subsets = {
+        'overall_performance_sets': worst_overall,
+        f'under_{str(token_cutoff)}_tokens_performance_sets': worst_filtered
+    }
+    save_json(subsets, save_path)
