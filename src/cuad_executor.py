@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List
 from src.utils import load_json, save_json
 from src.agents.legal_contract_expert import LegalContractExpert
 import json
@@ -201,4 +201,54 @@ class CUADExecutor:
         save_json(predictions, save_path)
         console.print("[bold green]Dataset processing complete![/bold green]")
             
+        return predictions 
+    
+    def process_files_list(self, 
+                            file_list: List[str],
+                            agent: LegalContractExpert, 
+                            debug: bool = False,
+                            verbose: bool = False) -> Dict[str, Any]:
+        """
+        Process a specific list of files from CUAD dataset in parallel
+        
+        Args:
+            file_list (List[str]): List of files to process
+            agent (LegalContractExpert): LLM agent to use for predictions
+            debug (bool): Whether to enable debug mode
+            verbose (bool): Whether to enable verbose mode
+            
+        Returns:
+            dict: Predictions for all specified files
+        """
+        console.print("[bold blue]Starting processing of specified files[/bold blue]")
+        predictions = {}
+        
+        # Validate files exist in dataset
+        valid_files = [f for f in file_list if f in self.cuad_data]
+        if len(valid_files) != len(file_list):
+            missing_files = set(file_list) - set(valid_files)
+            console.print(f"[bold yellow]Warning: {len(missing_files)} files not found in dataset[/bold yellow]")
+            for f in missing_files:
+                console.print(f"[yellow]Missing file: {f}[/yellow]")
+        
+        if not valid_files:
+            raise ValueError("No valid files to process")
+        
+        # Process files in parallel
+        with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            futures = {
+                executor.submit(self.process_file, filename, agent, debug, verbose): filename 
+                for filename in valid_files
+            }
+            
+            for future in track(as_completed(futures), 
+                              total=len(futures), 
+                              description="Processing files"):
+                filename = futures[future]
+                try:
+                    predictions[filename] = future.result()
+                except Exception as e:
+                    console.print(f"[bold red]Error processing {filename}: {str(e)}[/bold red]")
+        
+        console.print("[bold green]Completed processing specified files![/bold green]")
         return predictions 

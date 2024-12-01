@@ -7,6 +7,8 @@ import argparse
 
 from src.utils import save_json
 
+#TODO: The preprocessing data code should be made available as a part of the CUADEvaluator
+
 ## Constants
 OPENAI_MODELS_LIST = ["gpt-4o-mini", "gpt-4o"]
 OLLAMA_MODELS_LIST = ["phi3", "mistral", "llama2:13b"]
@@ -172,6 +174,51 @@ class CUADEvaluator:
         }
         
         return avg_metrics 
+
+    def evaluate_model_for_files(self, model_name: str, file_list: List[str], debug: bool = False) -> Dict[str, Any]:
+        """
+        Evaluate a model on a specific subset of files from CUAD dataset
+        
+        Args:
+            model_name (str): Name of model to evaluate
+            file_list (List[str]): List of filenames to evaluate
+            debug (bool): Whether to enable debug mode
+            
+        Returns:
+            dict: Evaluation results for the model on specified files
+        """
+        # Create agent for model
+        if model_name in self.openai_models:
+            agent = LegalContractExpert(provider='openai', model_name=model_name)
+        elif model_name in self.ollama_models:
+            agent = LegalContractExpert(provider='ollama', model_name=model_name)
+        else:
+            raise ValueError(f"Invalid model name: {model_name}")
+        
+        # Process files in parallel using the new method
+        predictions = self.executor.process_files_list(
+            file_list=file_list,
+            agent=agent,
+            debug=debug
+        )
+        
+        # Calculate metrics
+        file_metrics = self._calculate_file_metrics(predictions)
+        avg_metrics = self._calculate_average_metrics(file_metrics)
+        
+        # Store results
+        results = {
+            model_name: {
+                "file_level_metrics": file_metrics,
+                "average_metrics": avg_metrics
+            }
+        }
+
+        # Save results
+        save_path = os.path.join(self.evaluation_save_path, f"{model_name}_subset_eval.json")
+        save_json(results, save_path)
+
+        return results
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate models on CUAD dataset')
