@@ -64,7 +64,7 @@ class LegalContractExpert:
         self.model_name = model_name
         self.provider = provider
         self.verbose = 0
-        if provider == 'openai':
+        if self.provider == 'openai':
             self.encoding = tiktoken.encoding_for_model(model_name)
     
     def _log(self, message: str):
@@ -249,11 +249,21 @@ class LegalContractExpert:
         if not answer:
             answer = "N/A"
         
-        token_count = {}
+        # Handle token count consistently
         if self.provider == 'openai':
+            # Calculate input tokens including system prompt
+            system_prompt = expert_agent.instructions
+            input_tokens = len(self.encoding.encode(question)) + \
+                         len(self.encoding.encode(system_prompt))
             token_count = {
-                "input_tokens": len(self.encoding.encode(question)),
+                "input_tokens": input_tokens,
                 "output_tokens": len(self.encoding.encode(expert_response))
+            }
+        else:
+            # For non-OpenAI models, use -1 to indicate token counting not available
+            token_count = {
+                "input_tokens": -1,
+                "output_tokens": -1
             }
         
         return category, {
@@ -262,10 +272,13 @@ class LegalContractExpert:
             "token_count": token_count
         }
 
-    def answer_questions_list(self, contract_path: str, category_to_question_path: str, debug: bool = False, verbose: int = 0):
+    def answer_questions_list(self, 
+                            contract_path: str, 
+                            category_to_question_path: str, 
+                            debug: bool = False,
+                            verbose: int = 0):
         """
         Answer questions about the contract based on categories defined in a JSON file
-        This function initializes a single instance of LegalContractExpert agent for given contract and uses it to answer questions.
         """
         self.verbose = verbose
         self._log("Starting contract analysis for multiple questions")
@@ -297,6 +310,7 @@ class LegalContractExpert:
         results = {}
         total_input_tokens = 0
         total_output_tokens = 0
+        
         # Process categories sequentially with rich output
         for category, question in category_to_question.items():
             try:
@@ -315,6 +329,7 @@ class LegalContractExpert:
 
         self._log("Completed processing all categories")
         
+        # Always include token_count in results
         if self.provider == 'openai':
             num_questions = len(category_to_question)
             results['token_count'] = {
@@ -322,7 +337,11 @@ class LegalContractExpert:
                 "average_output_tokens": total_output_tokens / num_questions
             }
         else:
-            results['token_count'] = {}
+            # For non-OpenAI models, use -1 to indicate token counting not available
+            results['token_count'] = {
+                "average_input_tokens": -1,
+                "average_output_tokens": -1
+            }
             
         return results
 
@@ -332,12 +351,12 @@ class LegalContractExpert:
         """
         self.verbose = verbose
         self._log("Starting contract analysis for single question")
-            
+        
         contract_text = self._load_contract_file(contract_path)
         
         # Generate Expert Agent
         self._log("Initializing Legal Contract Expert agent")
-            
+        
         expert_instructions = self._get_question_answer_instructions(contract_text)
         expert_agent = Agent(
             name="Legal Contract Expert",
@@ -355,11 +374,21 @@ class LegalContractExpert:
 
         self._log("Completed contract analysis")
         
-        token_count = {}
+        # Handle token count consistently with answer_questions_list
         if self.provider == 'openai':
+            # Calculate input tokens including system prompt
+            system_prompt = expert_agent.instructions
+            input_tokens = len(self.encoding.encode(question)) + \
+                         len(self.encoding.encode(system_prompt))
             token_count = {
-                "input_tokens": len(self.encoding.encode(question)),
+                "input_tokens": input_tokens,
                 "output_tokens": len(self.encoding.encode(expert_response))
+            }
+        else:
+            # For non-OpenAI models, use -1 to indicate token counting not available
+            token_count = {
+                "input_tokens": -1,
+                "output_tokens": -1
             }
             
         return {

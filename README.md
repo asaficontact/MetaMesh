@@ -46,6 +46,7 @@ metamesh/
 - Baseline evaluation system operational + evaluation for a model can also be run through command line.
 - Direct contract-to-model approach established as performance baseline
 - Results stored in `results/evals/` and `results/predictions/`
+- Notebook for baseline analysis can be found [here](./baseline_analysis.ipynb) --> the notebook creates a subset of the CUAD dataset, runs evals fon it, analyzes the results and compares the performance of the models.
 
 **Key Insights:**
 1. Direct contract processing shows room for improvement
@@ -77,4 +78,4 @@ metamesh/
 
 
 ## Challenge 
-- The llama2:13 has a context window of 4096 and some of the tokens are beyond the context window. We need to find a way to handle this.
+- The llama2:13 has a context window of 4096 and some of the tokens are beyond the context window. We need to find a way to handle this. --> For now lets focus on the GPT-4o and GPT-4o-mini models.

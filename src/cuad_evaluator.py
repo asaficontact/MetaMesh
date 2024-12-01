@@ -18,7 +18,9 @@ class CUADEvaluator:
     """
     Evaluator class to assess model performance on CUAD dataset
     """
-    def __init__(self, cuad_data_path: str, evaluation_save_path: str = EVALUATION_SAVE_PATH):
+    def __init__(self, 
+                 cuad_data_path: str, 
+                 evaluation_save_path: str = EVALUATION_SAVE_PATH):
         """
         Initialize evaluator
         
@@ -30,7 +32,7 @@ class CUADEvaluator:
         self.ollama_models = OLLAMA_MODELS_LIST
         self.evaluation_save_path = evaluation_save_path
         
-    def evaluate_model(self, model_name: str, debug: bool = False) -> Dict[str, Any]:
+    def evaluate_model(self, model_name: str, debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """
         Evaluate a single model on CUAD dataset
         
@@ -41,19 +43,24 @@ class CUADEvaluator:
         Returns:
             dict: Evaluation results for the model
         """
-        # Create agent for model
+        # Determine provider
         if model_name in self.openai_models:
-            agent = LegalContractExpert(provider='openai', model_name=model_name)
+            provider = 'openai'
         elif model_name in self.ollama_models:
-            agent = LegalContractExpert(provider='ollama', model_name=model_name)
+            provider = 'ollama'
         else:
             raise ValueError(f"Invalid model name: {model_name}")
         
         # Get predictions
-        predictions = self.executor.process_dataset(agent, debug=debug)
+        predictions = self.executor.process_dataset(
+            model_name=model_name,
+            provider=provider,
+            debug=debug,
+            verbose=verbose
+        )
         
         # Calculate metrics
-        file_metrics = self._calculate_file_metrics(predictions)
+        file_metrics = self._calculate_file_metrics(predictions, debug=debug)
         avg_metrics = self._calculate_average_metrics(file_metrics)
         
         # Store results
@@ -68,7 +75,7 @@ class CUADEvaluator:
 
         return results
 
-    def evaluate_models(self, model_names: List[str], debug: bool = False) -> Dict[str, Any]:
+    def evaluate_models(self, model_names: List[str], debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """
         Evaluate multiple models on CUAD dataset
         
@@ -82,11 +89,11 @@ class CUADEvaluator:
         results = {}
         
         for model_name in model_names:
-            results[model_name] = self.evaluate_model(model_name, debug=debug)
+            results[model_name] = self.evaluate_model(model_name, debug=debug, verbose=verbose)
 
         return results
     
-    def _calculate_file_metrics(self, predictions: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    def _calculate_file_metrics(self, predictions: Dict[str, Any], debug: bool = False) -> Dict[str, Dict[str, float]]:
         """
         Calculate metrics for each file
         
@@ -98,54 +105,91 @@ class CUADEvaluator:
         """
         file_metrics = {}
         
+        # Get dataset-level token count if available
+        dataset_token_count = predictions.get('token_count', {})
+        
         for filename, file_preds in predictions.items():
-            # Initialize counters
-            correct = 0
-            total = 0
-            true_positives = 0
-            false_positives = 0
-            true_negatives = 0
-            false_negatives = 0
+            if filename == 'token_count':  # Skip the dataset-level token count
+                continue
             
-            # Calculate metrics for each category
-            for category_preds in file_preds.values():
-                pred = category_preds['predicted_answer'].lower()
-                true = category_preds['true_value'].lower()
+            if debug:
+                print(f"\nDEBUG: Calculating metrics for {filename}")
+                print(f"DEBUG: File predictions structure: {file_preds.keys() if file_preds else 'None'}")
+            
+            try:
+                # Initialize counters
+                correct = 0
+                total = 0
+                true_positives = 0
+                false_positives = 0
+                true_negatives = 0
+                false_negatives = 0
                 
-                total += 1
-                if pred == true:
-                    correct += 1
+                # Calculate metrics for each category
+                for category, category_preds in file_preds.items():
+                    if category == 'token_count':  # Skip token_count when calculating metrics
+                        continue
                     
-                if true == 'yes':
-                    if pred == 'yes':
-                        true_positives += 1
-                    else:
-                        false_negatives += 1
-                else:  # true == 'no'
-                    if pred == 'no':
-                        true_negatives += 1
-                    else:
-                        false_positives += 1
-            
-            # Calculate metrics
-            accuracy = correct / total if total > 0 else 0
-            precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
-            recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
-            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-            
-            file_metrics[filename] = {
-                "accuracy": accuracy,
-                "precision": precision,
-                "recall": recall,
-                "f1_score": f1,
-                "correct_predictions": correct,
-                "total_questions": total,
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "true_negatives": true_negatives,
-                "false_negatives": false_negatives
-            }
-            
+                    if not isinstance(category_preds, dict):
+                        if debug:
+                            print(f"DEBUG: Unexpected category_preds type for {category}: {type(category_preds)}")
+                        continue
+                    
+                    if debug:
+                        print(f"DEBUG: Processing category {category}")
+                        print(f"DEBUG: Category prediction structure: {category_preds.keys()}")
+                    
+                    pred = category_preds['predicted_answer'].lower()
+                    true = category_preds['true_value'].lower()
+                    
+                    total += 1
+                    if pred == true:
+                        correct += 1
+                    
+                    if true == 'yes':
+                        if pred == 'yes':
+                            true_positives += 1
+                        else:
+                            false_negatives += 1
+                    else:  # true == 'no'
+                        if pred == 'no':
+                            true_negatives += 1
+                        else:
+                            false_positives += 1
+                
+                # Calculate metrics
+                accuracy = correct / total if total > 0 else 0
+                precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+                recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+                f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                
+                metrics = {
+                    "accuracy": accuracy,
+                    "precision": precision,
+                    "recall": recall,
+                    "f1_score": f1,
+                    "correct_predictions": correct,
+                    "total_questions": total,
+                    "true_positives": true_positives,
+                    "false_positives": false_positives,
+                    "true_negatives": true_negatives,
+                    "false_negatives": false_negatives
+                }
+                
+                # Add token count metrics if available for this file
+                if 'token_count' in file_preds:
+                    metrics['input_tokens'] = file_preds['token_count'].get('average_input_tokens', -1)
+                    metrics['output_tokens'] = file_preds['token_count'].get('average_output_tokens', -1)
+                
+                file_metrics[filename] = metrics
+                
+            except Exception as e:
+                if debug:
+                    print(f"DEBUG: Error calculating metrics for {filename}: {str(e)}")
+                    import traceback
+                    print(f"DEBUG: Traceback:\n{traceback.format_exc()}")
+                raise
+        
         return file_metrics
     
     def _calculate_average_metrics(self, file_metrics: Dict[str, Dict[str, float]]) -> Dict[str, float]:
@@ -173,9 +217,12 @@ class CUADEvaluator:
             for metric, value in metric_sums.items()
         }
         
+        # Add total files processed
+        avg_metrics['total_files_processed'] = total_files
+        
         return avg_metrics 
 
-    def evaluate_model_for_files(self, model_name: str, file_list: List[str], debug: bool = False) -> Dict[str, Any]:
+    def evaluate_model_for_files(self, model_name: str, file_list: List[str], debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """
         Evaluate a model on a specific subset of files from CUAD dataset
         
@@ -187,23 +234,25 @@ class CUADEvaluator:
         Returns:
             dict: Evaluation results for the model on specified files
         """
-        # Create agent for model
+        # Determine provider
         if model_name in self.openai_models:
-            agent = LegalContractExpert(provider='openai', model_name=model_name)
+            provider = 'openai'
         elif model_name in self.ollama_models:
-            agent = LegalContractExpert(provider='ollama', model_name=model_name)
+            provider = 'ollama'
         else:
             raise ValueError(f"Invalid model name: {model_name}")
         
         # Process files in parallel using the new method
         predictions = self.executor.process_files_list(
             file_list=file_list,
-            agent=agent,
-            debug=debug
+            model_name=model_name,
+            provider=provider,
+            debug=debug,
+            verbose=verbose
         )
         
         # Calculate metrics
-        file_metrics = self._calculate_file_metrics(predictions)
+        file_metrics = self._calculate_file_metrics(predictions, debug=debug)
         avg_metrics = self._calculate_average_metrics(file_metrics)
         
         # Store results
