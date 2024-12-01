@@ -46,7 +46,7 @@ metamesh/
 - Baseline evaluation system operational + evaluation for a model can also be run through command line.
 - Direct contract-to-model approach established as performance baseline
 - Results stored in `results/evals/` and `results/predictions/`
-- Notebook for baseline analysis can be found [here](./baseline_analysis.ipynb) --> the notebook creates a subset of the CUAD dataset, runs evals fon it, analyzes the results and compares the performance of the models.
+- Notebook for baseline analysis notebook --> it creates a subset of the CUAD dataset, runs evals fon it, analyzes the results and compares the performance of the models. The notebook was too large to be included, reach out to me to get it.
 
 **Key Insights:**
 1. Direct contract processing shows room for improvement
