@@ -279,6 +279,7 @@ class LegalContractExpert:
                             verbose: int = 0):
         """
         Answer questions about the contract based on categories defined in a JSON file
+        This function initializes a single instance of LegalContractExpert agent for given contract and uses it to answer questions.
         """
         self.verbose = verbose
         self._log("Starting contract analysis for multiple questions")
