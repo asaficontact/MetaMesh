@@ -2,13 +2,8 @@ AutoAgents/
 data/
 .env
 src/swarm/
-
-
-
 src/__pycache__/
 src/agents/__pycache__/
 results/evals/
 results/predictions/
-
-
-baseline_analysis.ipynb
+/baseline_analysis.ipynb
