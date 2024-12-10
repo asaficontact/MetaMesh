@@ -7,3 +7,6 @@ src/agents/__pycache__/
 results/evals/
 results/predictions/
 /baseline_analysis.ipynb
+
+
+src/metamesh/config/
