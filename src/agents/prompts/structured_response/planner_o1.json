@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "AgentInfo": {
+      "properties": {
+        "agent_name": {
+          "description": "The name of the agent that will collect data points for a section.",
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "agent_instructions": {
+          "description": "Detailed instructions for the agent on how to collect data points for a section. This should include the agent's role, the section it is collecting data points for, information about the data points and how to collect them, the thought process the agent should follow, and any other relevant information.",
+          "title": "Agent Instructions",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_name",
+        "agent_instructions"
+      ],
+      "title": "AgentInfo",
+      "type": "object"
+    },
+    "DataPoint": {
+      "properties": {
+        "data_point_name": {
+          "description": "The name of the data point that the agent will collect.",
+          "title": "Data Point Name",
+          "type": "string"
+        },
+        "data_point_description": {
+          "description": "A description of the data point for the agent so it knows what information to collect for the data point.",
+          "title": "Data Point Description",
+          "type": "string"
+        },
+        "data_point_questions": {
+          "description": "A list of questions that will help guide agents when collecting information about the data point.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Data Point Questions",
+          "type": "array"
+        },
+        "data_point_instructions": {
+          "description": "Instructions for the agent on how to collect the data point.",
+          "title": "Data Point Instructions",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_point_name",
+        "data_point_description",
+        "data_point_questions",
+        "data_point_instructions"
+      ],
+      "title": "DataPoint",
+      "type": "object"
+    },
+    "TemplateSection": {
+      "properties": {
+        "section_name": {
+          "description": "The name of the section that the agent will collect data points for.",
+          "title": "Section Name",
+          "type": "string"
+        },
+        "section_description": {
+          "description": "A description of the section for the agent so it knows what information is expected to be collected in the section.",
+          "title": "Section Description",
+          "type": "string"
+        },
+        "data_points": {
+          "description": "A list of data points that the agent will collect for the section.",
+          "items": {
+            "$ref": "#/$defs/DataPoint"
+          },
+          "title": "Data Points",
+          "type": "array"
+        },
+        "section_agent": {
+          "$ref": "#/$defs/AgentInfo",
+          "description": "The agents that will collect data points for the section."
+        }
+      },
+      "required": [
+        "section_name",
+        "section_description",
+        "data_points",
+        "section_agent"
+      ],
+      "title": "TemplateSection",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "introduction": {
+      "description": "The introduction to the template that the agent will use to understand the overall structure of the template.",
+      "title": "Introduction",
+      "type": "string"
+    },
+    "sections": {
+      "description": "A list of sections and the agents that will collect data points for the sections.",
+      "items": {
+        "$ref": "#/$defs/TemplateSection"
+      },
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "introduction",
+    "sections"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

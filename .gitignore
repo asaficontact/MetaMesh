@@ -4,6 +4,9 @@ data/
 src/swarm/
 src/__pycache__/
 src/agents/__pycache__/
+
+
+results/
 results/evals/
 results/predictions/
 /baseline_analysis.ipynb

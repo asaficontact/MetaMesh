@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "DataPoint": {
+      "properties": {
+        "data_point_name": {
+          "description": "The name of the data point for which the agent collected the information. Should be copied verbatim from the data point name in the plan.",
+          "title": "Data Point Name",
+          "type": "string"
+        },
+        "data_point_description": {
+          "description": "A description of what is contained in the data point. Should be copied verbatim from the data point description in the plan.",
+          "title": "Data Point Description",
+          "type": "string"
+        },
+        "data_point_questions": {
+          "description": "A list of questions that the agent used to collect the data point. Should be copied verbatim from the data point questions in the plan.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Data Point Questions",
+          "type": "array"
+        },
+        "data_point_overview": {
+          "description": "A summary of all the information that was collected for the datapoint by the agent.",
+          "title": "Data Point Overview",
+          "type": "string"
+        },
+        "data_point_answers": {
+          "description": "The answer to the data point questions. The agent should include all the answers for the data point questions in the data point answers. Write each answer in a new paragraph.",
+          "title": "Data Point Answers",
+          "type": "string"
+        },
+        "data_point_verbatim": {
+          "description": "The verbatim text from the contract that the agent used to collect the data point. Should be copied verbatim from the contract.",
+          "title": "Data Point Verbatim",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_point_name",
+        "data_point_description",
+        "data_point_questions",
+        "data_point_overview",
+        "data_point_answers",
+        "data_point_verbatim"
+      ],
+      "title": "DataPoint",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "data_points": {
+      "description": "A list of data points that were extracted from the contract by the agent.",
+      "items": {
+        "$ref": "#/$defs/DataPoint"
+      },
+      "title": "Data Points",
+      "type": "array"
+    }
+  },
+  "required": [
+    "data_points"
+  ],
+  "title": "ExtractedData",
+  "type": "object"
+}
