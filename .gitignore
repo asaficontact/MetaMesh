@@ -9,4 +9,6 @@ results/predictions/
 /baseline_analysis.ipynb
 
 
+
 src/metamesh/config/
+src/metamesh_v2/
