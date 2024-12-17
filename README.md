@@ -35,6 +35,8 @@ metamesh/
 │   └── plot.py                            # Plotting functions for analysis
 ├── results/                               # Evaluation results and model predictions --> uploaded on google drive linked below
 ├── data/                                  # CUAD raw and processed data --> uploaded on google drive linked below
+├── project_presentation.pdf               # Project presentation
+├── project_report.pdf                     # Project report
 ├── .env                                   # Environment variables and API keys
 ├── .gitignore                             # Git ignore patterns for data, env files etc.
 └── README.md                              # Project documentation
