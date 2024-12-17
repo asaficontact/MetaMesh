@@ -7,7 +7,7 @@ src/agents/__pycache__/
 
 
 results/
-*.ipynb
+notebooks/
 
 
 
