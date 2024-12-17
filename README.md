@@ -40,7 +40,8 @@ metamesh/
 ├── .env                                   # Environment variables and API keys
 ├── .gitignore                             # Git ignore patterns for data, env files etc.
 └── README.md                              # Project documentation
-
+└── Notebooks                              # All notebooks are expected to be run from the root directory
+```
 
 ## Notebooks --> The notebooks are in the 'notebooks' folder in the google drive linked below. Couldn't upload them here due to file size constraints.
 - `baseline_analysis.ipynb`: The notebook that you will need to run to recreate all the evaluation metrics and plots.
