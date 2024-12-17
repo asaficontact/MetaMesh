@@ -7,9 +7,7 @@ src/agents/__pycache__/
 
 
 results/
-results/evals/
-results/predictions/
-/baseline_analysis.ipynb
+*.ipynb
 
 
 

@@ -1,5 +1,3 @@
-
-
 from pydantic import Field
 import openai
 from dotenv import load_dotenv
@@ -8,6 +6,8 @@ from typing import Dict, List, Optional
 import os
 import json
 import re
+import time
+from src.utils import count_tokens
 
 load_dotenv()
 
@@ -115,6 +115,12 @@ class PlanExecutor:
         self.temp = temp
         self.debug = debug
         
+        self.token_counts = {
+            "input_tokens": 0,
+            "output_tokens": 0
+        }
+        self.processing_times = {}
+        
     
     def _load_plan(self):
         """Load the plan JSON file."""
@@ -149,17 +155,30 @@ class PlanExecutor:
 
     def process_section(self, section: TemplateSection):
         """Process a single section by generating prompts and extracting data."""
-        # Generate the system and user prompts
         system_prompt = self.generate_agent_system_prompt(section)
         user_prompt = self.generate_agent_user_prompt()
-
+        
+        # Count input tokens
+        input_tokens = self._count_tokens(system_prompt, user_prompt)
+        self.token_counts["input_tokens"] += input_tokens
+        
         if self.debug:
             print(f"\nAgent: {section.section_agent.agent_name}")
             print("\nSystem Prompt:")
             print(system_prompt)
-
-        # Call the OpenAI API
+            
+        # Time the LLM call
+        start_time = time.time()
         response_text = oai_call(system_prompt, user_prompt, model=self.model, temp=self.temp)
+        end_time = time.time()
+        
+        # Record processing time for this agent
+        agent_time = end_time - start_time
+        self.processing_times[f"{section.section_agent.agent_name}_processing_time"] = agent_time
+        
+        # Count output tokens
+        output_tokens = self._count_output_tokens(str(response_text))
+        self.token_counts["output_tokens"] += output_tokens
 
         if self.debug:
             print("\nAgent Response:")
@@ -171,7 +190,6 @@ class PlanExecutor:
         elif 'gpt' in self.model:
             extracted_data_points = response_text.data_points
 
-        # Create SectionResult
         section_result = SectionResult(
             section_name=section.section_name,
             section_description=section.section_description,
@@ -327,3 +345,11 @@ class PlanExecutor:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(self.results, f, indent=4)
         print(f"Results saved to {output_path}")
+
+    def _count_tokens(self, system_prompt: str, user_prompt: str) -> int:
+        """Count tokens for input prompts."""
+        return count_tokens(system_prompt + user_prompt, self.model)
+    
+    def _count_output_tokens(self, response: str) -> int:
+        """Count tokens in the response."""
+        return count_tokens(response, self.model)

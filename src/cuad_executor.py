@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 ## Constants
 DATASET_PREDICTION_SAVE_PATH = 'results/predictions'
-MAX_WORKERS = 8
+MAX_WORKERS = 11
 
 # Initialize rich console
 console = Console()
@@ -21,17 +21,35 @@ class CUADExecutor:
     """
     def __init__(self, 
                  cuad_data_path: str, 
-                 dataset_save_path: str = DATASET_PREDICTION_SAVE_PATH):
+                 dataset_save_path: str = DATASET_PREDICTION_SAVE_PATH,
+                 use_contract_doc: bool = True,
+                 use_intermediate_rep: bool = False,
+                 intermediate_rep_dir_path: str = None):
         """
         Initialize with path to CUAD dataset
         
         Args:
             cuad_data_path (str): Path to CUAD dataset JSON file
             dataset_save_path (str): Path to save dataset predictions
+            use_contract_doc (bool): Whether to use original contract document
+            use_intermediate_rep (bool): Whether to use intermediate representations
+            intermediate_rep_dir_path (str): Directory containing intermediate representations
         """
         console.print("[bold blue]Initializing CUAD Executor[/bold blue]")
+        
+        # Validate parameters
+        if use_intermediate_rep and not intermediate_rep_dir_path:
+            raise ValueError("intermediate_rep_dir_path must be provided when use_intermediate_rep is True")
+            
+        if not use_contract_doc and not use_intermediate_rep:
+            raise ValueError("At least one of use_contract_doc or use_intermediate_rep must be True")
+            
         self.cuad_data = load_json(cuad_data_path)
         self.dataset_save_path = dataset_save_path
+        self.use_contract_doc = use_contract_doc
+        self.use_intermediate_rep = use_intermediate_rep
+        self.intermediate_rep_dir_path = intermediate_rep_dir_path
+        
         console.print(f"Loaded dataset with {len(self.cuad_data)} files")
         
     def _create_category_questions_file(self, file_data: Dict) -> str:
@@ -57,41 +75,84 @@ class CUADExecutor:
         
         return temp_file.name
         
+    def _get_intermediate_rep_path(self, filename: str) -> str:
+        """Get path to intermediate representation file for given contract"""
+        if not self.intermediate_rep_dir_path:
+            return None
+            
+        # Remove any file extension from filename
+        base_filename = os.path.splitext(filename)[0]
+            
+        # Convert filename to intermediate rep filename by adding _extraction.json
+        rep_filename = f"{base_filename}_extraction.json"
+        rep_path = os.path.join(self.intermediate_rep_dir_path, rep_filename)
+        
+        if not os.path.exists(rep_path):
+            raise ValueError(f"Intermediate representation not found at: {rep_path}")
+            
+        return rep_path
+        
     def process_file(self, filename: str, agent: LegalContractExpert, debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """Process all category questions for a given file"""
         if filename not in self.cuad_data:
             raise ValueError(f"File {filename} not found in CUAD dataset")
         
         file_data = self.cuad_data[filename]
-        document_path = file_data['document_path']
+        document_path = file_data['document_path'] if self.use_contract_doc else None
         
-        # Verify file exists and is readable
-        if not os.path.exists(document_path):
+        # Get intermediate rep path if needed
+        intermediate_rep_path = None
+        if self.use_intermediate_rep:
+            intermediate_rep_path = self._get_intermediate_rep_path(filename)
+            print(f"Intermediate rep path: {intermediate_rep_path}")
+        
+        # Verify contract file exists if using it
+        if document_path and not os.path.exists(document_path):
             raise ValueError(f"Contract file not found at path: {document_path}")
         
         # Create temporary questions file
         questions_file = self._create_category_questions_file(file_data)
         
         try:
-            # Get predictions using answer_questions_list
-            predictions = agent.answer_questions_list(
-                contract_path=document_path,
-                category_to_question_path=questions_file,
-                debug=debug,
-                verbose=verbose
-            )
+            # Choose appropriate method based on configuration
+            if self.use_intermediate_rep and self.use_contract_doc:
+                # Use both sources
+                predictions = agent.answer_questions_list_with_intermediate_rep(
+                    intermediate_rep_path=intermediate_rep_path,
+                    category_to_question_path=questions_file,
+                    contract_path=document_path,
+                    debug=debug,
+                    verbose=verbose
+                )
+            elif self.use_intermediate_rep:
+                # Use only intermediate representation
+                predictions = agent.answer_questions_list_with_intermediate_rep(
+                    intermediate_rep_path=intermediate_rep_path,
+                    category_to_question_path=questions_file,
+                    debug=debug,
+                    verbose=verbose
+                )
+            else:
+                # Use only contract document (original behavior)
+                predictions = agent.answer_questions_list(
+                    contract_path=document_path,
+                    category_to_question_path=questions_file,
+                    debug=debug,
+                    verbose=verbose
+                )
             
             if not predictions:
                 raise ValueError(f"No predictions returned for file {filename}")
             
-            # Check to make sure we got prediction for all 31 questions
-
-            
-            # Format predictions to include true values
+            # Format predictions and collect metrics
             formatted_predictions = {}
+            total_input_tokens = 0
+            total_output_tokens = 0
+            total_processing_time = 0
+            metrics_by_category = {}
+            
             for category, pred_data in predictions.items():
-                if category == 'token_count':
-                    formatted_predictions['token_count'] = pred_data
+                if category == 'metrics':  # Skip the overall metrics
                     continue
                     
                 formatted_predictions[category] = {
@@ -101,8 +162,28 @@ class CUADExecutor:
                     'raw_response': pred_data['raw_response']
                 }
                 
-            if len(formatted_predictions) <= 1:  # Only token_count present
-                raise ValueError(f"No valid predictions for file {filename}")
+                # Safely get metrics
+                if 'metrics' in pred_data:
+                    formatted_predictions[category]['metrics'] = pred_data['metrics']
+                    metrics = pred_data['metrics']
+                    token_count = metrics.get('token_count', {})
+                    total_input_tokens += token_count.get('input_tokens', 0)
+                    total_output_tokens += token_count.get('output_tokens', 0)
+                    total_processing_time += metrics.get('processing_time', 0)
+                    metrics_by_category[category] = metrics
+            
+            # Calculate averages
+            num_categories = len(formatted_predictions)
+            if num_categories > 0:
+                formatted_predictions['metrics'] = {
+                    'by_category': metrics_by_category,
+                    'averages': {
+                        'average_input_tokens': total_input_tokens / num_categories,
+                        'average_output_tokens': total_output_tokens / num_categories,
+                        'average_processing_time': total_processing_time / num_categories,
+                        'total_categories': num_categories
+                    }
+                }
             
             return formatted_predictions
             
@@ -120,29 +201,60 @@ class CUADExecutor:
         if condition not in file_data:
             return filename, None
             
-        document_path = file_data['document_path']
+        document_path = file_data['document_path'] if self.use_contract_doc else None
         question = file_data[condition]['question']
         true_answer = file_data[condition]['answer']
         
-        prediction = agent.answer_contract_question(
-            contract_path=document_path,
-            question=question,
-            debug=debug,
-            verbose=verbose
-        )
-        
-        result = {
-            'question': question,
-            'predicted_answer': prediction['answer'],
-            'true_value': true_answer,
-            'raw_response': prediction['raw_response']
-        }
-        
-        # Include token count if available
-        if 'token_count' in prediction:
-            result['token_count'] = prediction['token_count']
-        
-        return filename, result
+        try:
+            # Get intermediate rep path if needed
+            intermediate_rep_path = None
+            if self.use_intermediate_rep:
+                intermediate_rep_path = self._get_intermediate_rep_path(filename)
+            
+            # Choose appropriate method based on configuration
+            if self.use_intermediate_rep and self.use_contract_doc:
+                # Use both sources
+                prediction = agent.answer_contract_question_with_intermediate_rep(
+                    intermediate_rep_path=intermediate_rep_path,
+                    question=question,
+                    contract_path=document_path,
+                    debug=debug,
+                    verbose=verbose
+                )
+            elif self.use_intermediate_rep:
+                # Use only intermediate representation
+                prediction = agent.answer_contract_question_with_intermediate_rep(
+                    intermediate_rep_path=intermediate_rep_path,
+                    question=question,
+                    debug=debug,
+                    verbose=verbose
+                )
+            else:
+                # Use only contract document (original behavior)
+                prediction = agent.answer_contract_question(
+                    contract_path=document_path,
+                    question=question,
+                    debug=debug,
+                    verbose=verbose
+                )
+            
+            result = {
+                'question': question,
+                'predicted_answer': prediction['answer'],
+                'true_value': true_answer,
+                'raw_response': prediction['raw_response']
+            }
+            
+            # Include token count if available
+            if 'token_count' in prediction:
+                result['token_count'] = prediction['token_count']
+            
+            return filename, result
+            
+        except Exception as e:
+            if debug:
+                print(f"Error processing condition for {filename}: {str(e)}")
+            return filename, None
     
     def process_condition(self, 
                           condition: str, 
@@ -179,13 +291,10 @@ class CUADExecutor:
                     
         return predictions
     
-    def process_dataset(self, 
-                        model_name: str,
-                        provider: str,
-                        debug: bool = False, 
-                        verbose: bool = False) -> Dict[str, Any]:
+    def process_dataset(self, model_name: str, provider: str, debug: bool = False, verbose: bool = False) -> Dict[str, Any]:
         """Process entire CUAD dataset"""
         console.print("[bold blue]Starting dataset processing[/bold blue]")
+        
         predictions = {}
         total_input_tokens = 0
         total_output_tokens = 0
@@ -207,30 +316,44 @@ class CUADExecutor:
                     filename, result = future.result()
                     if result is not None:
                         predictions[filename] = result
-                        # Aggregate raw token counts, not averages
-                        if 'token_count' in result:
-                            total_input_tokens += result['token_count'].get('input_tokens', 0)
-                            total_output_tokens += result['token_count'].get('output_tokens', 0)
-                            total_files += 1
+                        total_files += 1
+                        
+                        # Aggregate metrics from each file
+                        if 'metrics' in result:
+                            file_metrics = result['metrics']
+                            if 'averages' in file_metrics:
+                                total_input_tokens += file_metrics['averages'].get('average_input_tokens', 0)
+                                total_output_tokens += file_metrics['averages'].get('average_output_tokens', 0)
+                                
                 except Exception as e:
                     console.print(f"[bold red]Unexpected error: {str(e)}[/bold red]")
         
         # Add dataset-level token count averages
         if total_files > 0:
             predictions['token_count'] = {
-                'average_input_tokens': total_input_tokens,  # Also store averages
-                'average_output_tokens': total_output_tokens,
+                'average_input_tokens': total_input_tokens / total_files,
+                'average_output_tokens': total_output_tokens / total_files,
                 'total_files_processed': total_files
             }
         else:
             predictions['token_count'] = {
-                'average_input_tokens': -1,
-                'average_output_tokens': -1,
+                'average_input_tokens': 0,
+                'average_output_tokens': 0,
                 'total_files_processed': 0
             }
         
         # Save predictions
-        save_path = os.path.join(self.dataset_save_path, f'{model_name}_baseline.json')
+        # Determine file suffix based on configuration
+        if self.use_contract_doc and self.use_intermediate_rep:
+            suffix = 'rep_contract_pred.json'
+        elif self.use_contract_doc:
+            suffix = 'contract_pred.json'
+        elif self.use_intermediate_rep:
+            suffix = 'rep_pred.json'
+        else:
+            suffix = 'pred.json'
+            
+        save_path = os.path.join(self.dataset_save_path, f'{model_name}_{suffix}')
         save_json(predictions, save_path)
         console.print("[bold green]Dataset processing complete![/bold green]")
             

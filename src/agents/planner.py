@@ -8,6 +8,8 @@ from typing import List, Optional
 import os
 import json
 import re
+import time
+from src.utils import count_tokens
 
 load_dotenv()
 
@@ -58,25 +60,21 @@ class Plan(BaseModel):
     introduction: str = Field(description="The introduction to the template that the agent will use to understand the overall structure of the template.")
     sections: List[TemplateSection] = Field(description="A list of sections and the agents that will collect data points for the sections.")
 
-
-def _parse_response(response_text: str) -> Optional[Plan]:
-    """Parse the assistant's response into a Plan object."""
-    try:
-        # Use regex to extract JSON object
-        json_match = re.search(r'\{(?:[^{}]|(?R))*\}', response_text, re.DOTALL)
-        if json_match:
-            json_str = json_match.group()
-            plan_dict = json.loads(json_str)
-            # Validate and parse using Pydantic
-            plan = Plan(**plan_dict)
-            return plan
-        else:
-            print("Failed to extract JSON from the assistant's response.")
-            return None
-    except Exception as e:
-        print(f"Error parsing assistant's response: {e}")
-        return None
-
+def clean_response_text(response_text):
+    # Remove leading and trailing whitespace
+    response_text = response_text.strip()
+    
+    # Check for leading code fences
+    if response_text.startswith('```json'):
+        response_text = response_text[len('```json'):].strip()
+    elif response_text.startswith('```'):
+        response_text = response_text[len('```'):].strip()
+    
+    # Remove trailing code fences if present
+    if response_text.endswith('```'):
+        response_text = response_text[:-len('```')].strip()
+    
+    return response_text
 
 # OpenAI API call functions
 def oai_call(system_prompt, user_prompt, model="gpt-4o", temp=0.7):
@@ -101,22 +99,32 @@ def oai_call(system_prompt, user_prompt, model="gpt-4o", temp=0.7):
                 {"role": "user", "content": prompt}
             ]
         )
-        
         response_text = response.choices[0].message.content
-        parsed_response = _parse_response(response_text)
-        return response_text
+        response_text = clean_response_text(response_text)
+        try: 
+            parsed_response = json.loads(response_text)
+            return parsed_response
+        except Exception as e:
+            raise Exception(f"Error parsing response: {e}")
 
 
 class Planner: 
     def __init__(self, 
                  model: str = None, 
                  temp: float = 0.7,
+                 debug: bool = False,
                  api_key: str = OPENAI_API_KEY):
         
         self.model = model
         self.temp = temp
+        self.debug = debug
         self.api_key = api_key
         self.plan: Optional[Plan] = None
+        self.token_counts = {
+            "input_tokens": 0,
+            "output_tokens": 0
+        }
+        self.llm_processing_time = 0
     
     def _load_file(self, file_path: str) -> str:
         """Load text content from a file."""
@@ -128,31 +136,82 @@ class Planner:
         except Exception as e:
             raise Exception(f"Error loading file {file_path}: {e}")
 
+    def _count_tokens(self, system_prompt: str, user_prompt: str) -> dict:
+        """Count tokens for input prompts."""
+        input_tokens = count_tokens(system_prompt + user_prompt, self.model)
+        return input_tokens
+    
+    def _count_output_tokens(self, response: str) -> int:
+        """Count tokens in the response."""
+        return count_tokens(response, self.model)
     
     def generate_plan(self, contract_text: str):
         """Generate the plan by analyzing the contract and making an OpenAI API call."""
-
-        # Prepare the user prompt with the contract text
         user_prompt = f"""
             Please analyze the following contract and perform the tasks as per your instructions.
 
             ## Contract Document
 
             {contract_text}
-        """ 
+        """
 
-        print("Generating plan...")
-
-        # Make the OpenAI API call
+        if self.debug:
+            print("\nGenerating Plan:")
+            print("\nSystem Prompt:")
+            print(PLANNER_SYSTEM_PROMPT)
+            print("\nUser Prompt:")
+            print(user_prompt)
+        else:
+            print("Generating plan...")
+        
+        # Count input tokens
+        input_tokens = self._count_tokens(PLANNER_SYSTEM_PROMPT, user_prompt)
+        self.token_counts["input_tokens"] = input_tokens
+        
+        if self.debug:
+            print(f"\nInput token count: {input_tokens}")
+        
+        # Time the LLM call
+        start_time = time.time()
         response = oai_call(
             system_prompt=PLANNER_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             model=self.model,
             temp=self.temp
         )
-
+        end_time = time.time()
+        
+        # Record processing time
+        self.llm_processing_time = end_time - start_time
+        
+        if self.debug:
+            print(f"\nLLM Processing time: {self.llm_processing_time:.2f} seconds")
+        
+        # Count output tokens
+        if isinstance(response, str):
+            output_tokens = self._count_output_tokens(response)
+        elif isinstance(response, dict):
+            output_tokens = self._count_output_tokens(json.dumps(response))
+        elif isinstance(response, Plan):
+            output_tokens = self._count_output_tokens(json.dumps(response.dict()))
+        else: 
+            raise ValueError(f"Unsupported response type: {type(response)}")
+        
+        self.token_counts["output_tokens"] = output_tokens
+        
+        if self.debug:
+            print(f"Output token count: {output_tokens}")
+            print("\nPlanner Response:")
+            if isinstance(response, str): 
+                print(response)
+            elif isinstance(response, dict):
+                print(json.dumps(response, indent=2))
+            elif isinstance(response, Plan):
+                print(json.dumps(response.dict(), indent=2))
+            else:
+                raise ValueError(f"Unsupported response type: {type(response)}")
+        
         self.plan = response
-
         return self.plan
     
 
@@ -168,13 +227,17 @@ class Planner:
 
         try:
             with open(output_file_path, 'w') as f:
-                json.dump(self.plan.dict(), f, indent=2)
-            print(f"Plan saved to {output_file_path}")
+                if isinstance(self.plan, Plan):
+                    json.dump(self.plan.dict(), f, indent=2)
+                elif isinstance(self.plan, dict):
+                    json.dump(self.plan, f, indent=2)
+                else:
+                    raise ValueError(f"Unsupported plan type: {type(self.plan)}")
+                    
+            if self.debug:
+                print(f"\nPlan saved successfully to: {output_file_path}")
+            else:
+                print(f"Plan saved to {output_file_path}")
         except Exception as e:
             print(f"Error saving plan to file: {e}")
 
-
-    
-
-        
-        

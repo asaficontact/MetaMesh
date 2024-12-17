@@ -30,6 +30,8 @@ import tiktoken
 import numpy as np
 from rich.console import Console
 from rich.table import Table
+import tiktoken
+
 
 console = Console()
 
@@ -535,6 +537,9 @@ def analyze_model_results(results_path: str, model_name: str = None, save_plots:
     for metric, value in avg_metrics.items():
         if isinstance(value, (int, float)):
             avg_table.add_row(metric, f"{value:.4f}")
+        elif isinstance(value, dict) and metric == 'token_counts':
+            for token_type, count in value.items():
+                avg_table.add_row(f"Average {token_type}", f"{count:.4f}")
     
     console.print(avg_table)
     
@@ -543,7 +548,21 @@ def analyze_model_results(results_path: str, model_name: str = None, save_plots:
     fig.suptitle(f'Performance Analysis for {model_name}', fontsize=16)
     
     # Convert data to DataFrame for easier plotting
-    df = pd.DataFrame.from_dict(file_metrics, orient='index').reset_index()
+    df_data = {}
+    for filename, metrics in file_metrics.items():
+        file_data = {
+            'accuracy': metrics['accuracy'],
+            'precision': metrics['precision'],
+            'recall': metrics['recall'],
+            'f1_score': metrics['f1_score'],
+            'input_tokens': metrics['token_counts']['input_tokens'],
+            'output_tokens': metrics['token_counts']['output_tokens'],
+            'total_tokens': metrics['token_counts']['total_tokens'],
+            'processing_time': metrics['processing_time']
+        }
+        df_data[filename] = file_data
+    
+    df = pd.DataFrame.from_dict(df_data, orient='index').reset_index()
     df.index = range(len(df))  # Reset index to numeric values
     
     # 1. Distribution of metrics
@@ -581,7 +600,11 @@ def analyze_model_results(results_path: str, model_name: str = None, save_plots:
     else:
         plt.show()
         
-    return {'metrics': avg_metrics, 'file_metrics': file_metrics}
+    return {
+        'metrics': avg_metrics, 
+        'file_metrics': file_metrics,
+        'dataframe': df  # Return DataFrame for additional analysis if needed
+    }
 
 def compare_models(model1_path: str, model2_path: str, 
                   model1_name: str = None, model2_name: str = None,
@@ -685,3 +708,15 @@ def compare_models(model1_path: str, model2_path: str,
         plt.savefig(f'results/analysis/model_comparison.png')
     else:
         plt.show()
+
+
+
+def count_tokens(text: str, model: str = "gpt-4o") -> int:
+    """Count the number of tokens in a text string."""
+    try:
+        encoding = tiktoken.encoding_for_model(model)
+        return len(encoding.encode(text))
+    except Exception:
+        # Fallback to cl100k_base encoding if model-specific encoding not found
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text)) 
