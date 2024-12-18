@@ -43,7 +43,7 @@ metamesh/
 └── Notebooks                              # All notebooks are expected to be run from the root directory
 ```
 
-## Notebooks --> The notebooks are in the 'notebooks' folder in the google drive linked below. Couldn't upload them here due to file size constraints.
+## Tutorial Notebooks --> The tutorialnotebooks are in the 'tutorial_notebooks' folder in the google drive linked below. Couldn't upload them here due to file size constraints.
 - `baseline_analysis.ipynb`: The notebook that you will need to run to recreate all the evaluation metrics and plots.
 - `metamesh_main.ipynb`: The notebook that contains examples on how to use the MetaMesh system.
 - `agent_testing_and_tuning.ipynb`: The notebook used to run the agents and tune the prompts.
